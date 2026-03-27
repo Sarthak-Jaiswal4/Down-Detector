@@ -1,0 +1,35 @@
+services:
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: always
+    
+  http-server:
+    build: 
+      context: ..
+      dockerfile: ./docker/Dockerfile.backend
+      args:
+        - DATABASE_URL=${DATABASE_URL}
+        - BACKEND_URL=${BACKEND_URL}
+    environment:
+      DATABASE_URL: "${DATABASE_URL}" # Pass your Neon URL here
+      REDIS_HOST: "redis"
+      REDIS_PORT: 6379
+    depends_on:
+      - redis
+
+  worker:
+    build: 
+      context: ..
+      dockerfile: ./docker/Dockerfile.Queue.yml
+    environment:
+      DATABASE_URL: "${DATABASE_URL}"
+      REDIS_HOST: "redis"
+      REDIS_PORT: 6379
+      BACKEND_URL: "${BACKEND_URL}"
+      NODE_ENV: production
+    depends_on:
+      - http-server
+      - redis

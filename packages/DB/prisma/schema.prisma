@@ -1,0 +1,59 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id       String    @id @default(uuid())
+  name     String
+  email    String    @unique
+  password String
+  monitors Monitor[]
+}
+
+enum MonitorStatus {
+  UP
+  PENDING
+  DOWN
+}
+
+enum ConnectionType {
+  HTTP
+  PORT
+}
+
+model Monitor {
+  id        String   @id @default(uuid())
+  userid    String
+  url       String
+  sslExpiryDays Int?
+  port      Int?
+  type      ConnectionType @default(HTTP)
+  status    MonitorStatus @default(UP)
+  interval  Int      @default(60)
+  createdAt DateTime @default(now())
+  maintenanceStart String?
+  maintenanceEnd   String? 
+  user      User     @relation(fields: [userid], references: [id])
+  checks    Check[]
+}
+
+model Check {
+  id        String   @id @default(uuid())
+  monitorId String
+  status    Int
+  latency   Int
+  ok        Boolean
+  checkedAt DateTime @default(now())
+  monitor   Monitor  @relation(fields: [monitorId], references: [id])
+  @@index([monitorId, checkedAt(sort: Desc)])
+}

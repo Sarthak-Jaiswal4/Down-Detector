@@ -1,0 +1,39 @@
+FROM node:20-alpine AS build
+
+ARG DATABASE_URL
+ENV DATABASE_URL=$DATABASE_URL
+
+RUN npm install -g pnpm
+WORKDIR /app
+
+COPY ./pnpm-lock.yaml ./pnpm-lock.yaml 
+COPY ./pnpm-workspace.yaml ./pnpm-workspace.yaml 
+COPY ./turbo.json ./turbo.json
+COPY ./package.json ./package.json
+
+COPY packages packages
+
+COPY ./apps/http-server ./apps/http-server
+
+RUN pnpm install
+
+RUN pnpm run db:migrate
+RUN pnpm run db:generate
+
+RUN pnpm run build --filter http-server
+
+FROM node:20-alpine AS run
+
+WORKDIR /app
+RUN npm install -g pnpm
+
+COPY --from=build /app/package.json ./
+COPY --from=build /app/pnpm-lock.yaml ./
+COPY --from=build /app/pnpm-workspace.yaml ./
+COPY --from=build /app/packages ./packages
+COPY --from=build /app/apps/http-server ./apps/http-server
+
+RUN pnpm install --frozen-lockfile
+EXPOSE 3001
+
+CMD ["pnpm", "--filter", "http-server", "start"]
