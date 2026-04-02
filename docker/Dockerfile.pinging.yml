@@ -13,14 +13,14 @@ COPY ./package.json ./package.json
 
 COPY packages packages
 
-COPY ./apps/http-server ./apps/http-server
+COPY ./apps/pinging ./apps/pinging
 
 RUN pnpm install --frozen-lockfile
 
 RUN pnpm run db:migrate
 RUN pnpm run db:generate
 
-RUN pnpm run build --filter http-server
+RUN pnpm run build --filter pinging
 
 FROM node:20-alpine AS run
 
@@ -31,9 +31,9 @@ COPY --from=build /app/package.json ./
 COPY --from=build /app/pnpm-lock.yaml ./
 COPY --from=build /app/pnpm-workspace.yaml ./
 COPY --from=build /app/packages ./packages
-COPY --from=build /app/apps/http-server ./apps/http-server
+COPY --from=build /app/apps/pinging ./apps/pinging
 
 RUN pnpm install --frozen-lockfile
-EXPOSE 3001
+EXPOSE 3002
 
-CMD ["pnpm", "--filter", "http-server", "start"]
+CMD ["pnpm", "--filter", "pinging", "start"]

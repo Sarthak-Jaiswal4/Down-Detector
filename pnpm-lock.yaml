@@ -111,15 +111,6 @@ importers:
       '@repo/db':
         specifier: workspace:*
         version: link:../../packages/DB
-      '@repo/queue':
-        specifier: workspace:*
-        version: link:../../packages/Queue
-      axios:
-        specifier: ^1.13.6
-        version: 1.13.6
-      bullmq:
-        specifier: ^5.71.0
-        version: 5.71.0
       cors:
         specifier: ^2.8.6
         version: 2.8.6
@@ -138,6 +129,9 @@ importers:
       jsonwebtoken:
         specifier: ^9.0.3
         version: 9.0.3
+      nanoid:
+        specifier: ^5.1.7
+        version: 5.1.7
       prom-client:
         specifier: ^15.1.3
         version: 15.1.3
@@ -163,6 +157,42 @@ importers:
       '@types/jsonwebtoken':
         specifier: ^9.0.10
         version: 9.0.10
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+
+  apps/pinging:
+    dependencies:
+      '@repo/db':
+        specifier: workspace:*
+        version: link:../../packages/DB
+      '@repo/queue':
+        specifier: workspace:*
+        version: link:../../packages/Queue
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages/typescript-config
+      '@types/express':
+        specifier: ^5.0.6
+        version: 5.0.6
+      axios:
+        specifier: '1.13'
+        version: 1.13.6
+      dotenv:
+        specifier: ^17.3.1
+        version: 17.3.1
+      express:
+        specifier: ^5.2.1
+        version: 5.2.1
+      express-prom-bundle:
+        specifier: ^8.0.0
+        version: 8.0.0(prom-client@15.1.3)
+      ioredis:
+        specifier: ^5.10.1
+        version: 5.10.1
+      prom-client:
+        specifier: ^15.1.3
+        version: 15.1.3
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
@@ -246,6 +276,12 @@ importers:
       ioredis:
         specifier: ^5.10.1
         version: 5.10.1
+      nodejs-traceroute:
+        specifier: ^2.0.1
+        version: 2.0.1
+      ping:
+        specifier: ^1.0.0
+        version: 1.0.0
       rimraf:
         specifier: ^6.1.3
         version: 6.1.3
@@ -3944,6 +3980,11 @@ packages:
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
+  nanoid@5.1.7:
+    resolution: {integrity: sha512-ua3NDgISf6jdwezAheMOk4mbE1LXjm1DfMUDMuJf4AqxLFK3ccGpgWizwa5YV7Yz9EpXwEaWoRXSb/BnV0t5dQ==}
+    engines: {node: ^18 || >=20}
+    hasBin: true
+
   napi-postinstall@0.3.4:
     resolution: {integrity: sha512-PHI5f1O0EP5xJ9gQmFGMS6IZcrVvTjpXjz7Na41gTE7eE2hK11lg04CECCYEEjdc17EV4DO+fkGEtt7TpTaTiQ==}
     engines: {node: ^12.20.0 || ^14.18.0 || >=16.0.0}
@@ -4008,6 +4049,9 @@ packages:
 
   node-releases@2.0.36:
     resolution: {integrity: sha512-TdC8FSgHz8Mwtw9g5L4gR/Sh9XhSP/0DEkQxfEFXOpiul5IiHgHan2VhYYb6agDSfp4KuvltmGApc8HMgUrIkA==}
+
+  nodejs-traceroute@2.0.1:
+    resolution: {integrity: sha512-9wU9yPPyW4g48QVxhAP3zPE7YiPqYU2S30DvDcXmlk8M72tMeOym2WRWWDXCmJ20017Vkqx9wXK+dnEhPeV9eQ==}
 
   npm-run-path@4.0.1:
     resolution: {integrity: sha512-S48WzZW777zhNIrn7gxOlISNAqi9ZC/uQFnRdbeIHhZhCA6UqpkOT8T1G7BvfdgP4Er8gF4sUbaS0i7QvIfCWw==}
@@ -4211,6 +4255,10 @@ packages:
   picomatch@4.0.3:
     resolution: {integrity: sha512-5gTmgEY/sqK6gFXLIsQNH19lWb4ebPDLA4SdLP7dsWkIXHWlG66oPuVvXSGFPppYZz8ZDZq0dYYrbHfBCVUb1Q==}
     engines: {node: '>=12'}
+
+  ping@1.0.0:
+    resolution: {integrity: sha512-3dxdgGtV+7P/EVo42JhkGSomeO/0GGicSz3mI/yK+AI+VGNAOfakw5XfcbGI4IjyBY+ZZwvuRXdhnNF2uliKew==}
+    engines: {node: '>=22.0.0'}
 
   pkce-challenge@5.0.1:
     resolution: {integrity: sha512-wQ0b/W4Fr01qtpHlqSqspcj3EhBvimsdh0KlHhH8HRZnMsEa0ea2fTULOXOS9ccQr3om+GcGRk4e+isrZWV8qQ==}
@@ -4990,6 +5038,10 @@ packages:
   validate-npm-package-name@7.0.2:
     resolution: {integrity: sha512-hVDIBwsRruT73PbK7uP5ebUt+ezEtCmzZz3F59BSr2F6OVFnJ/6h8liuvdLrQ88Xmnk6/+xGGuq+pG9WwTuy3A==}
     engines: {node: ^20.17.0 || >=22.9.0}
+
+  validator@13.15.26:
+    resolution: {integrity: sha512-spH26xU080ydGggxRyR1Yhcbgx+j3y5jbNXk/8L+iRvdIEQ4uTRH2Sgf2dokud6Q4oAtsbNvJ1Ft+9xmm6IZcA==}
+    engines: {node: '>= 0.10'}
 
   vary@1.1.2:
     resolution: {integrity: sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==}
@@ -8941,6 +8993,8 @@ snapshots:
 
   nanoid@3.3.11: {}
 
+  nanoid@5.1.7: {}
+
   napi-postinstall@0.3.4: {}
 
   natural-compare@1.4.0: {}
@@ -8997,6 +9051,10 @@ snapshots:
     optional: true
 
   node-releases@2.0.36: {}
+
+  nodejs-traceroute@2.0.1:
+    dependencies:
+      validator: 13.15.26
 
   npm-run-path@4.0.1:
     dependencies:
@@ -9215,6 +9273,8 @@ snapshots:
   picomatch@2.3.1: {}
 
   picomatch@4.0.3: {}
+
+  ping@1.0.0: {}
 
   pkce-challenge@5.0.1: {}
 
@@ -10209,6 +10269,8 @@ snapshots:
       typescript: 5.9.3
 
   validate-npm-package-name@7.0.2: {}
+
+  validator@13.15.26: {}
 
   vary@1.1.2: {}
 

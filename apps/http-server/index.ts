@@ -1,17 +1,14 @@
 import 'dotenv/config';
-import axios from 'axios'
 import express, { Request, Response, NextFunction } from 'express'
 import { prisma } from '@repo/db'
-import { loginSchema, monitorSchema, signupSchema, bulkCheckSchema } from './types/types.js'
+import { loginSchema, monitorSchema, signupSchema, bulkCheckSchema, updateMonitorSchema, pauseMonitorSchema } from './types/types.js'
 import jwt from 'jsonwebtoken'
 import cors from 'cors'
 import { Resend } from 'resend';
 import { Redis } from 'ioredis'
-import type { Monitor } from '../../packages/DB/generated/prisma/client.js'
-import net from 'net'
-import {myQueue,retry} from '@repo/queue'
 import client from 'prom-client'
 import promBundle from 'express-prom-bundle';
+import { nanoid } from "nanoid";
 
 const resend = new Resend(process.env.Resend_API);
 const JWT_SECRET = (process.env.JWT_SECRET || 'secret') as string;
@@ -31,33 +28,6 @@ const Monitor_publisher = new Redis({
   host: process.env.REDIS_HOST || 'localhost',
   port: process.env.PORT ? parseInt(process.env.PORT, 10) : 6379
 });
-
-const Monitor_sub = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: process.env.PORT ? parseInt(process.env.PORT, 10) : 6379
-});
-
-const siteUpGauge = new client.Gauge({
-  name: 'monitor_site_up',
-  help: 'Whether the site is up (1) or down (0)',
-  labelNames: ['url', 'type'],
-});
-
-const siteLatencyGauge = new client.Gauge({
-  name: 'monitor_site_latency_ms',
-  help: 'Response latency in ms',
-  labelNames: ['url', 'type'],
-});
-
-const siteCheckCounter = new client.Counter({
-  name: 'monitor_site_checks_total',
-  help: 'Total checks performed',
-  labelNames: ['url', 'status'],
-});
-
-Monitor_sub.subscribe('Update_monitor', () => {
-    update_monitor()
-})
 
 export interface AuthRequest extends Request {
     userId?: string;
@@ -84,181 +54,6 @@ const app = express()
 app.use(cors())
 app.use(metricsMiddleware);
 app.use(express.json())
-
-// const sample:Monitor={
-//     interval: 10, // 5 second interval for fast testing
-//     status: 'UP',
-//     userid: "d438964b-3a96-4179-86b7-72f01745156e",
-//     url: "https://httpbin.org/status/504", 
-//     type: 'HTTP',
-//     id:'5cbdbd35-6053-4fd6-a47d-79e1c507d7a5',
-//     maintenanceEnd:null,
-//     maintenanceStart:null,
-//     port:null,
-// }
-
-const lastPingedMap = new Map<string, number>();
-let cachedMonitors: Monitor[] = [];
-const update_monitor = async () => {
-    try {
-        console.log("Fecthed again and cleared cached monitors")
-        cachedMonitors = await prisma.monitor.findMany({
-            where: {
-                status: 'UP'
-            }
-        })
-    } catch (error) {
-        console.log("Error in updating the cached monitor", error)
-    }
-}
-update_monitor()
-const running = async () => {
-    try {
-        cachedMonitors.map(async (e, index) => {
-            setTimeout(() => {
-                executeIndividualPing(e);
-            }, index * 200);
-        })
-    } catch {
-        console.log("Some error has occured")
-    }
-    setTimeout(running, 10000);
-}
-running()
-
-setInterval(() => {
-    update_monitor()
-    console.log(cachedMonitors)
-}, 65*1000);
-
-async function executeIndividualPing(e: any) {
-    try {
-        const last_pinged = lastPingedMap.get(e.id) || 0;
-        const start = Number(e.maintenanceStart);
-        const end = Number(e.maintenanceEnd);
-        const now = new Date();
-        const currentUtcMs = (now.getUTCHours() * 3600000) +
-            (now.getUTCMinutes() * 60000) +
-            (now.getUTCSeconds() * 1000) +
-            now.getUTCMilliseconds();
-        const is_maintenance: boolean = (start && end)
-            ? (start < end
-                ? (currentUtcMs >= start && currentUtcMs <= end) // Normal window (e.g., 2AM - 4AM)
-                : (currentUtcMs >= start || currentUtcMs <= end)) // Over-midnight (e.g., 11PM - 1AM)
-            : false;
-        if (last_pinged == 0 || Date.now() - last_pinged >= e.interval * 1000) {
-            lastPingedMap.set(e.id, Date.now());
-            const starttime = performance.now()
-            try {
-                if (e.type == "HTTP") {
-                    const response = await axios.get(e.url, { timeout: 10000 })
-                    const endtime = performance.now()
-                    const secondsAgo = last_pinged === 0 ? 0 : (Date.now() - last_pinged) / 1000
-                    console.log(`Pinged ${e.url} (latency: ${Math.floor(endtime - starttime)}ms). Last pinged ${secondsAgo}s ago.`);
-                    if ((response.status >= 200 && response.status < 400) || is_maintenance) {
-
-                        siteUpGauge.set({ url: e.url, type: e.type }, 1);
-                        siteLatencyGauge.set({ url: e.url, type: e.type }, Math.floor(endtime - starttime));
-                        siteCheckCounter.inc({ url: e.url, status: 'up' });
-
-                        const data = {
-                            monitorId: e.id,
-                            status: response.status,
-                            latency: Math.floor(endtime - starttime),
-                            ok: response.status >= 200 && response.status < 400,
-                            checkedAt: new Date().toISOString()
-                        }
-                        myQueue.add('result', data)
-                    } else {
-                        throw new Error(`Status Code: ${response.status}`);
-                    }
-                } else if (e.type == "PORT") {
-                    console.log(`port ${e.url} ${e.port} is being pinged`)
-                    await new Promise((resolve, reject) => {
-                        const socket = new net.Socket();
-                        socket.setTimeout(5000);
-                        socket.connect(e.port, e.url)
-                        let latency
-                        socket.on("connect", () => {
-                            const endtime = performance.now()
-                            latency = Math.floor(endtime - starttime)
-                            
-                            siteUpGauge.set({ url: e.url, type: e.type }, 1);
-                            siteLatencyGauge.set({ url: e.url, type: e.type }, latency);
-                            siteCheckCounter.inc({ url: e.url, status: 'up' });
-
-                            const data = {
-                                monitorId: e.id,
-                                status: 200,
-                                latency: latency,
-                                ok: true,
-                                checkedAt: new Date().toISOString()
-                            }
-                            myQueue.add('result', data)
-                            socket.destroy();
-                            console.log(`port ${e.url} ${e.port} pinged successfully with latency of ${latency}`)
-                            resolve(true)
-                        })
-                        socket.on("error", () => {
-                            socket.destroy();
-                            reject(`Error has occured in connecting with TCP`)
-                        })
-                        socket.on('timeout', () => {
-                            socket.destroy();
-                            reject("Timeout");
-                        });
-                    })
-                }
-            } catch (error: any) {
-                console.log(`Error pinging ${e.url}`)
-                const endtime = performance.now();
-                const latency = Math.floor(endtime - starttime);
-                if (is_maintenance) {
-                    console.log(`[Maintenance] ${e.url} failed, but silencing alerts.`);
-                    myQueue.add('result', {
-                        monitorId: e.id,
-                        status: 999,
-                        latency,
-                        ok: true, // Keep uptime at 100%
-                        checkedAt: new Date().toISOString()
-                    });
-                } else {
-                    siteUpGauge.set({ url: e.url, type: e.type }, 0);
-                    siteLatencyGauge.set({ url: e.url, type: e.type }, latency);
-                    siteCheckCounter.inc({ url: e.url, status: 'down' });
-
-                    cachedMonitors = cachedMonitors.filter((ed) => ed.id !== e.id);
-
-                    console.log("Added to retry and result queue")
-                    retry.add('retry', {
-                        monitorid: e.id,
-                        userid: e.userid,
-                        url: e.url,
-                        type: e.type,
-                        port: e.port
-                    }, {
-                        attempts: 3,
-                        backoff: {
-                            type: 'fixed',
-                            delay: 10000
-                        },
-                        jobId: `retry-${e.id}`
-                    });
-
-                    myQueue.add('result', {
-                        monitorId: e.id,
-                        status: error.response?.status || 500,
-                        latency: Math.floor(endtime - starttime),
-                        ok: false,
-                        checkedAt: new Date().toISOString()
-                    });
-                }
-            }
-        }
-    } catch (error: any) {
-        console.log("error", error.status)
-    }
-}
 
 app.get('/metrics',async (req,res)=>{
     res.setHeader('Content-type',client.register.contentType)
@@ -321,6 +116,14 @@ app.get('/', (req, res) => {
     res.status(200).json({ message: "Running healthy" })
 })
 
+app.get('/health', (req, res) => {
+    res.status(201).json({ message: "Running healthy" })
+})
+
+app.get('/health1', (req, res) => {
+    res.status(201).json({ message: "Running healthy" })
+})
+
 app.post('/create/monitor', authMiddleware, async (req: AuthRequest, res: any) => {
     try {
         const Data = monitorSchema.safeParse(req.body)
@@ -333,6 +136,8 @@ app.post('/create/monitor', authMiddleware, async (req: AuthRequest, res: any) =
             return res.status(400).json({ message: "not Authorized" })
         }
 
+        const slug = `${nanoid(8)}`;
+
         const data = await prisma.monitor.create({
             data: {
                 url: Data.data.url,
@@ -340,7 +145,11 @@ app.post('/create/monitor', authMiddleware, async (req: AuthRequest, res: any) =
                 interval: Data.data.interval,
                 type: Data.data.type,
                 port: Data.data.type === 'PORT' ? Data.data.port : null,
-                createdAt: new Date()
+                title: Data.data.title || null,
+                maintenanceStart: Data.data.maintenanceStart || null,
+                maintenanceEnd: Data.data.maintenanceEnd || null,
+                createdAt: new Date(),
+                slug:slug
             }
         })
 
@@ -351,15 +160,98 @@ app.post('/create/monitor', authMiddleware, async (req: AuthRequest, res: any) =
     }
 })
 
+app.put('/update/monitor/:id', authMiddleware, async (req: AuthRequest, res: any) => {
+    try {
+        const id = req.params.id as string;
+        const payload = updateMonitorSchema.safeParse(req.body);
+        if (!payload.success) return res.status(400).json({ error: payload.error });
+        if (!req.userId) return res.status(401).json({ message: "Not authorized" });
+
+        const monitor = await prisma.monitor.findUnique({ where: { id } });
+        if (!monitor || monitor.userid !== req.userId) return res.status(403).json({ message: "Forbidden" });
+
+        const dataToUpdate: any = { ...payload.data };
+        if (payload.data.type === 'HTTP') dataToUpdate.port = null;
+
+        const updated = await prisma.monitor.update({
+            where: { id },
+            data: dataToUpdate
+        });
+
+        await Monitor_publisher.publish('Update_monitor', JSON.stringify(updated));
+        return res.status(200).json({ message: "Monitor updated effectively", monitor: updated });
+    } catch (error) {
+        return res.status(500).json({ error });
+    }
+});
+
+app.patch('/monitor/:id/pause', authMiddleware, async (req: AuthRequest, res: any) => {
+    try {
+        const id = req.params.id as string;
+        const payload = pauseMonitorSchema.safeParse(req.body);
+        if (!payload.success) return res.status(400).json({ error: payload.error });
+        if (!req.userId) return res.status(401).json({ message: "Not authorized" });
+
+        const monitor = await prisma.monitor.findUnique({ where: { id } });
+        if (!monitor || monitor.userid !== req.userId) return res.status(403).json({ message: "Forbidden" });
+
+        const updated = await prisma.monitor.update({
+            where: { id },
+            data: { active: payload.data.active }
+        });
+
+        await Monitor_publisher.publish('Update_monitor', JSON.stringify(updated));
+        return res.status(200).json({ message: `Monitor ${payload.data.active ? 'resumed' : 'paused'}`, monitor: updated });
+    } catch (error) {
+        return res.status(500).json({ error });
+    }
+});
+
+app.delete('/monitor/:id', authMiddleware, async (req: AuthRequest, res: any) => {
+    try {
+        const id = req.params.id as string;
+        if (!req.userId) return res.status(401).json({ message: "Not authorized" });
+        const monitor = await prisma.monitor.findUnique({ where: { id } });
+        if (!monitor || monitor.userid !== req.userId) return res.status(403).json({ message: "Forbidden" });
+
+        // Prisma lacks native cascade in this schema natively for all relations easily without schema.prisma update, 
+        // so we manually clean up incidents then checks.
+        await prisma.incident.deleteMany({
+            where: { check: { monitorId: id } }
+        });
+        await prisma.check.deleteMany({
+            where: { monitorId: id }
+        });
+        await prisma.monitor.delete({
+            where: { id }
+        });
+
+        await Monitor_publisher.publish('Delete_monitor', JSON.stringify({ id }));
+        return res.status(200).json({ message: "Monitor deleted successfully" });
+    } catch (error) {
+        return res.status(500).json({ error });
+    }
+});
+
 app.get('/monitor/:id/checks', async (req, res) => {
     try {
         const monitorId = req.params.id;
-        const checks = await prisma.check.findMany({
-            where: { monitorId },
-            orderBy: { checkedAt: 'desc' },
-            take: 50
-        });
-        return res.status(200).json({ checks });
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 50;
+        const skip = (page - 1) * limit;
+
+        const [checks, total] = await Promise.all([
+            prisma.check.findMany({
+                where: { monitorId },
+                orderBy: { checkedAt: 'desc' },
+                take: limit,
+                skip: skip,
+                include: { incident: true }
+            }),
+            prisma.check.count({ where: { monitorId } })
+        ]);
+        
+        return res.status(200).json({ checks, total, page, limit });
     } catch (error) {
         return res.status(500).json({ error: error });
     }
@@ -374,14 +266,43 @@ app.get('/user/monitors', authMiddleware, async (req: AuthRequest, res: any) => 
         const userid = req.userId;
 
         const monitors = await prisma.monitor.findMany({
-            where: { userid },
-            include: {
+            where:{
+                userid:userid
+            },
+            select: {
+                id: true,
+                url: true,
+                status: true,
+                type: true,
+                title: true,
+                slug: true,
+                createdAt: true,
+                active: true,
+                interval: true,
+                port: true,
+                maintenanceStart: true,
+                maintenanceEnd: true,
                 checks: {
+                    take: 50,
                     orderBy: { checkedAt: 'desc' },
-                    take: 1
-                }
+                    select: {
+                        ok: true
+                    }
+                },
             }
         });
+
+        // const monitors = await prisma.$queryRaw`
+        //     SELECT 
+        //         m.id, 
+        //         m.url, 
+        //         m.status,
+        //         (SELECT COUNT(*) FROM "Check" c WHERE c."monitorId" = m.id)::int as "total",
+        //         (SELECT COUNT(*) FROM "Check" c WHERE c."monitorId" = m.id AND c.ok = true)::int as "okCount"
+        //     FROM "Monitor" m
+        //     WHERE m.userid = ${userid}
+        // `;
+
         return res.status(200).json({ monitors });
     } catch (error) {
         return res.status(500).json({ error: error });
@@ -436,53 +357,56 @@ app.post("/send/email", async (req: Request, res: Response): Promise<any> => {
         }
 
         const htmlTemplate = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <style>
-                body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0a0a0a; color: #ffffff; padding: 20px; }
-                .container { max-width: 600px; margin: 0 auto; background-color: #171717; border: 1px solid #262626; border-radius: 12px; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
-                .header { text-align: center; margin-bottom: 24px; }
-                .alert-icon { font-size: 48px; line-height: 1; margin-bottom: 16px; }
-                .title { color: #f87171; font-size: 24px; font-weight: 600; margin: 0 0 8px 0; }
-                .subtitle { color: #a3a3a3; font-size: 16px; margin: 0; }
-                .details-box { background-color: #0a0a0a; border: 1px solid #262626; border-radius: 8px; padding: 20px; margin-top: 24px; }
-                .detail-row { display: flex; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px solid #262626; padding-bottom: 12px; }
-                .detail-row:last-child { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
-                .label { color: #737373; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 500; }
-                .value { color: #f5f5f5; font-size: 14px; font-weight: 500; word-break: break-all; text-align: right; }
-                .value.url { color: #38bdf8; }
-                .footer { text-align: center; margin-top: 32px; font-size: 12px; color: #525252; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <div class="alert-icon">⚠️</div>
-                    <h1 class="title">Downtime Alert</h1>
-                    <p class="subtitle">We've detected an issue with your monitor.</p>
-                </div>
-                <div class="details-box">
-                    <div class="detail-row">
-                        <span class="label">Monitor URL</span>
-                        <span class="value url">${monitor.url}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="label">Time Detected</span>
-                        <span class="value">${new Date().toLocaleString('en-US', { timeZone: 'UTC', timeZoneName: 'short' })}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="label">Status</span>
-                        <span class="value" style="color: #f87171;">Down / Unresponsive</span>
-                    </div>
-                </div>
-                <div class="footer">
-                    <p>This is an automated message from your monitoring system.</p>
-                </div>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f4f4f5; color: #18181b; padding: 40px 20px; margin: 0; }
+        .container { max-width: 500px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e4e4e7; border-radius: 16px; padding: 40px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05); }
+        .header { text-align: center; margin-bottom: 32px; }
+        .alert-icon { display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 64px; background-color: #fef2f2; border-radius: 100px; font-size: 32px; margin-bottom: 20px; }
+        .title { color: #ef4444; font-size: 24px; font-weight: 700; margin: 0 0 8px 0; letter-spacing: -0.025em; }
+        .subtitle { color: #71717a; font-size: 15px; margin: 0; line-height: 1.5; }
+        .details-box { background-color: #fafafa; border: 1px solid #f4f4f5; border-radius: 12px; padding: 24px; margin-top: 32px; }
+        .detail-row { display: flex; justify-content: space-between; margin-bottom: 16px; border-bottom: 1px solid #f1f1f2; padding-bottom: 16px; }
+        .detail-row:last-child { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
+        .label { color: #a1a1aa; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+        .value { color: #18181b; font-size: 14px; font-weight: 600; word-break: break-all; text-align: right; }
+        .value.url { color: #3b82f6; }
+        .footer { text-align: center; margin-top: 40px; font-size: 13px; color: #a1a1aa; }
+        .footer p { margin: 4px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="alert-icon">🏮</div>
+            <h1 class="title">Downtime Alert</h1>
+            <p class="subtitle">We've detected an interruption in service for one of your monitored endpoints.</p>
+        </div>
+        <div class="details-box">
+            <div class="detail-row">
+                <span class="label">Monitor URL</span>
+                <span class="value url">${monitor.url}</span>
             </div>
-        </body>
-        </html>
-                `;
+            <div class="detail-row">
+                <span class="label">Time Detected</span>
+                <span class="value">${new Date().toLocaleString('en-US', { timeZone: 'UTC', timeZoneName: 'short' })}</span>
+            </div>
+            <div class="detail-row">
+                <span class="label">Status</span>
+                <span class="value" style="color: #ef4444;">🚨 Down / Unreachable</span>
+            </div>
+        </div>
+        <div class="footer">
+            <p>This is an automated security notification from Sarthak's Down Detector.</p>
+            <p>© 2026 Downtime Monitor. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>
+        `;
 
         const { data, error } = await resend.emails.send({
             from: "Acme <onboarding@resend.dev>",
@@ -491,10 +415,10 @@ app.post("/send/email", async (req: Request, res: Response): Promise<any> => {
             html: htmlTemplate,
         });
 
-        const updateDB = await prisma.monitor.update({
-            where: { id: monitorid },
-            data: { status: 'DOWN' }
-        })
+        // const updateDB = await prisma.monitor.update({
+        //     where: { id: monitorid },
+        //     data: { status: 'DOWN' }
+        // })
 
         if (error) {
             return res.status(400).json({ error });
@@ -522,53 +446,54 @@ app.post('/send/ssl-alert', async (req, res) => {
         const user = monitor.user;
 
         const htmlTemplate = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <style>
-                body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0a0a0a; color: #ffffff; padding: 20px; }
-                .container { max-width: 600px; margin: 0 auto; background-color: #171717; border: 1px solid #262626; border-radius: 12px; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
-                .header { text-align: center; margin-bottom: 24px; }
-                .alert-icon { font-size: 48px; line-height: 1; margin-bottom: 16px; }
-                .title { color: #facc15; font-size: 24px; font-weight: 600; margin: 0 0 8px 0; }
-                .subtitle { color: #a3a3a3; font-size: 16px; margin: 0; }
-                .details-box { background-color: #0a0a0a; border: 1px solid #262626; border-radius: 8px; padding: 20px; margin-top: 24px; }
-                .detail-row { display: flex; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px solid #262626; padding-bottom: 12px; }
-                .detail-row:last-child { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
-                .label { color: #737373; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 500; }
-                .value { color: #f5f5f5; font-size: 14px; font-weight: 500; word-break: break-all; text-align: right; }
-                .value.url { color: #38bdf8; }
-                .footer { text-align: center; margin-top: 32px; font-size: 12px; color: #525252; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <div class="alert-icon">🔒</div>
-                    <h1 class="title">SSL Expiry Warning</h1>
-                    <p class="subtitle">The SSL certificate for your website is expiring soon.</p>
-                </div>
-                <div class="details-box">
-                    <div class="detail-row">
-                        <span class="label">Monitor URL</span>
-                        <span class="value url">${monitor.url}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="label">Days Remaining</span>
-                        <span class="value" style="color: #facc15; font-weight: bold;">${daysLeft} days</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="label">Action Required</span>
-                        <span class="value">Renew SSL Certificate</span>
-                    </div>
-                </div>
-                <div class="footer">
-                    <p>This is an automated message from your monitoring system.</p>
-                </div>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f4f4f5; color: #18181b; padding: 40px 20px; margin: 0; }
+        .container { max-width: 500px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e4e4e7; border-radius: 16px; padding: 40px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05); }
+        .header { text-align: center; margin-bottom: 32px; }
+        .alert-icon { display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 64px; background-color: #fffbeb; border-radius: 100px; font-size: 32px; margin-bottom: 20px; }
+        .title { color: #f59e0b; font-size: 24px; font-weight: 700; margin: 0 0 8px 0; letter-spacing: -0.025em; }
+        .subtitle { color: #71717a; font-size: 15px; margin: 0; line-height: 1.5; }
+        .details-box { background-color: #fafafa; border: 1px solid #f4f4f5; border-radius: 12px; padding: 24px; margin-top: 32px; }
+        .detail-row { display: flex; justify-content: space-between; margin-bottom: 16px; border-bottom: 1px solid #f1f1f2; padding-bottom: 16px; }
+        .detail-row:last-child { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
+        .label { color: #a1a1aa; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+        .value { color: #18181b; font-size: 14px; font-weight: 600; word-break: break-all; text-align: right; }
+        .value.url { color: #3b82f6; }
+        .footer { text-align: center; margin-top: 40px; font-size: 13px; color: #a1a1aa; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="alert-icon">🔒</div>
+            <h1 class="title">SSL Expiry Warning</h1>
+            <p class="subtitle">The SSL certificate for your website is expiring soon. Renew it to avoid security warnings.</p>
+        </div>
+        <div class="details-box">
+            <div class="detail-row">
+                <span class="label">Monitor URL</span>
+                <span class="value url">${monitor.url}</span>
             </div>
-        </body>
-        </html>
-                `;
+            <div class="detail-row">
+                <span class="label">Days Remaining</span>
+                <span class="value" style="color: #f59e0b; font-weight: 700;">${daysLeft} days</span>
+            </div>
+            <div class="detail-row">
+                <span class="label">Action Required</span>
+                <span class="value">Certificate Renewal</span>
+            </div>
+        </div>
+        <div class="footer">
+            <p>Automated security notification from Sarthak's Down Detector.</p>
+        </div>
+    </div>
+</body>
+</html>
+        `;
 
         const { data, error } = await resend.emails.send({
             from: "Acme <onboarding@resend.dev>",
@@ -608,53 +533,54 @@ app.post('/send/recovery-email', async (req: Request, res: Response): Promise<an
         }
 
         const htmlTemplate = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <style>
-                body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0a0a0a; color: #ffffff; padding: 20px; }
-                .container { max-width: 600px; margin: 0 auto; background-color: #171717; border: 1px solid #262626; border-radius: 12px; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
-                .header { text-align: center; margin-bottom: 24px; }
-                .alert-icon { font-size: 48px; line-height: 1; margin-bottom: 16px; }
-                .title { color: #34d399; font-size: 24px; font-weight: 600; margin: 0 0 8px 0; }
-                .subtitle { color: #a3a3a3; font-size: 16px; margin: 0; }
-                .details-box { background-color: #0a0a0a; border: 1px solid #262626; border-radius: 8px; padding: 20px; margin-top: 24px; }
-                .detail-row { display: flex; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px solid #262626; padding-bottom: 12px; }
-                .detail-row:last-child { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
-                .label { color: #737373; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 500; }
-                .value { color: #f5f5f5; font-size: 14px; font-weight: 500; word-break: break-all; text-align: right; }
-                .value.url { color: #38bdf8; }
-                .value.ok { color: #34d399; }
-                .footer { text-align: center; margin-top: 32px; font-size: 12px; color: #525252; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <div class="alert-icon">✅</div>
-                    <h1 class="title">Monitor Recovered</h1>
-                    <p class="subtitle">Your service is back online and responding normally.</p>
-                </div>
-                <div class="details-box">
-                    <div class="detail-row">
-                        <span class="label">Monitor URL</span>
-                        <span class="value url">${monitor.url}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="label">Recovered At</span>
-                        <span class="value">${new Date().toLocaleString('en-US', { timeZone: 'UTC', timeZoneName: 'short' })}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="label">Status</span>
-                        <span class="value ok">✓ Online / Operational</span>
-                    </div>
-                </div>
-                <div class="footer">
-                    <p>This is an automated message from your monitoring system.</p>
-                </div>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f4f4f5; color: #18181b; padding: 40px 20px; margin: 0; }
+        .container { max-width: 500px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e4e4e7; border-radius: 16px; padding: 40px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05); }
+        .header { text-align: center; margin-bottom: 32px; }
+        .alert-icon { display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 64px; background-color: #f0fdf4; border-radius: 100px; font-size: 32px; margin-bottom: 20px; }
+        .title { color: #10b981; font-size: 24px; font-weight: 700; margin: 0 0 8px 0; letter-spacing: -0.025em; }
+        .subtitle { color: #71717a; font-size: 15px; margin: 0; line-height: 1.5; }
+        .details-box { background-color: #fafafa; border: 1px solid #f4f4f5; border-radius: 12px; padding: 24px; margin-top: 32px; }
+        .detail-row { display: flex; justify-content: space-between; margin-bottom: 16px; border-bottom: 1px solid #f1f1f2; padding-bottom: 16px; }
+        .detail-row:last-child { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
+        .label { color: #a1a1aa; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+        .value { color: #18181b; font-size: 14px; font-weight: 600; word-break: break-all; text-align: right; }
+        .value.url { color: #3b82f6; }
+        .value.ok { color: #10b981; }
+        .footer { text-align: center; margin-top: 40px; font-size: 13px; color: #a1a1aa; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="alert-icon">✨</div>
+            <h1 class="title">Service Recovered</h1>
+            <p class="subtitle">Great news! Your service is back online and responding normally.</p>
+        </div>
+        <div class="details-box">
+            <div class="detail-row">
+                <span class="label">Monitor URL</span>
+                <span class="value url">${monitor.url}</span>
             </div>
-        </body>
-        </html>
+            <div class="detail-row">
+                <span class="label">Recovered At</span>
+                <span class="value">${new Date().toLocaleString('en-US', { timeZone: 'UTC', timeZoneName: 'short' })}</span>
+            </div>
+            <div class="detail-row">
+                <span class="label">Status</span>
+                <span class="value ok">✓ Operational</span>
+            </div>
+        </div>
+        <div class="footer">
+            <p>Automated security notification from Sarthak's Down Detector.</p>
+        </div>
+    </div>
+</body>
+</html>
         `;
 
         const { data, error } = await resend.emails.send({
@@ -673,6 +599,167 @@ app.post('/send/recovery-email', async (req: Request, res: Response): Promise<an
         return res.status(500).json({ error: error.message || "Internal Server Error" });
     }
 });
+
+app.post('/incident',async(req,res)=>{
+    try {
+        console.log("Saving incident data.....")
+        const {report,monitorid,error}=req.body
+
+        const newCheck = await prisma.check.create({
+            data: {
+                monitorId: monitorid,
+                status: 500,
+                latency: 0,
+                ok: false,
+            }
+        });
+
+        const incident = await prisma.incident.create({
+            data: {
+                checkId: newCheck.id,
+                dns: report.dns,
+                sslDays: typeof report.ssl === 'number' ? report.ssl : null,
+                pingLatency: report.ping?.latency && report.ping.latency !== "unknown" ? parseFloat(report.ping.latency) : null,
+                hops: report.hops,
+                rawError: error,
+                failureHop:(report.failureHop).toString(),
+                failureLocation:report.failureLocation
+            }
+        });
+
+        await prisma.monitor.update({
+            where: { id: monitorid },
+            data: { status: 'DOWN' }
+        });
+
+
+        res.status(200).json({message:"incident data saved"});
+    } catch (error) {
+        console.error("❌ INCIDENT ERROR:", error);
+        res.status(500).json({ error: "Failed to create incident",message:error });
+    }
+})
+
+app.get('/status/:slug',async (req:Request,res:Response)=>{
+    try {
+        const slug = req.params.slug as string;
+
+        if(!slug){
+            return res.status(404).json({message:"No slug found"})
+        }
+
+        const monitor = await prisma.monitor.findFirst({
+            where:{ slug },
+            include:{
+                checks:{
+                    orderBy:{ checkedAt:'desc' },
+                    take: 50,
+                    include:{ incident: true }
+                }
+            }
+        })
+
+        if(!monitor){
+            return res.status(404).json({message:"Monitor not found"})
+        }
+
+        // Calculate uptime percentage from all checks 
+        const totalChecks = monitor.checks.length;
+        const okChecks = monitor.checks.filter(c => c.ok).length;
+        const uptimePercent = totalChecks > 0 ? Math.round((okChecks / totalChecks) * 10000) / 100 : 100;
+
+        // Average latency (only from ok checks)
+        const okChecksData = monitor.checks.filter(c => c.ok && c.latency > 0);
+        const avgLatency = okChecksData.length > 0 
+            ? Math.round(okChecksData.reduce((sum, c) => sum + c.latency, 0) / okChecksData.length)
+            : 0;
+
+        // Build daily uptime for last 90 days
+        const ninetyDaysAgo = new Date();
+        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+        const dailyChecks = await prisma.check.groupBy({
+            by: ['monitorId'],
+            where: {
+                monitorId: monitor.id,
+                checkedAt: { gte: ninetyDaysAgo }
+            },
+            _count: { id: true }
+        });
+
+        // Get daily data with raw SQL-like grouping via individual queries
+        const allChecksFor90Days = await prisma.check.findMany({
+            where: {
+                monitorId: monitor.id,
+                checkedAt: { gte: ninetyDaysAgo }
+            },
+            select: { checkedAt: true, ok: true },
+            orderBy: { checkedAt: 'asc' }
+        });
+
+        // Group by day
+        const dailyMap = new Map<string, { total: number; ok: number }>();
+        for (const c of allChecksFor90Days) {
+            const day = c.checkedAt.toISOString().split('T')[0]!;
+            const entry = dailyMap.get(day) || { total: 0, ok: 0 };
+            entry.total++;
+            if (c.ok) entry.ok++;
+            dailyMap.set(day, entry);
+        }
+
+        const dailyUptime = Array.from(dailyMap.entries()).map(([date, stats]) => ({
+            date,
+            uptime: stats.total > 0 ? Math.round((stats.ok / stats.total) * 10000) / 100 : 100,
+            total: stats.total,
+            ok: stats.ok
+        }));
+
+        // Recent incidents
+        const recentIncidents = monitor.checks
+            .filter(c => c.incident)
+            .slice(0, 5)
+            .map(c => ({
+                time: c.checkedAt,
+                rawError: c.incident?.rawError,
+                failureHop: c.incident?.failureHop,
+                failureLocation: c.incident?.failureLocation,
+                dns: c.incident?.dns,
+                pingLatency: c.incident?.pingLatency
+            }));
+
+        res.status(200).json({
+            monitor: {
+                id: monitor.id,
+                url: monitor.url,
+                type: monitor.type,
+                port: monitor.port,
+                status: monitor.status,
+                slug: monitor.slug,
+                createdAt: monitor.createdAt,
+                interval: monitor.interval
+            },
+            stats: {
+                uptimePercent,
+                avgLatency,
+                totalChecks,
+                okChecks
+            },
+            dailyUptime,
+            recentChecks: monitor.checks.slice(0, 20).map(c => ({
+                id: c.id,
+                status: c.status,
+                latency: c.latency,
+                ok: c.ok,
+                checkedAt: c.checkedAt,
+                incident: c.incident
+            })),
+            recentIncidents
+        })
+    } catch (error:any) {
+        console.log("Error in getting status from slug",error.message)
+        res.status(500).json({message:"server error in getting status"})
+    }
+})
 
 app.listen(3001, () => {
     console.log("http-server running at 3001 port")

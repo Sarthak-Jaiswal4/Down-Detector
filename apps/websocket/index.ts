@@ -1,14 +1,17 @@
 import { Redis } from 'ioredis';
 import { Server } from 'socket.io';
 
-const io = new Server(3002, {
+const io = new Server(3003, {
   cors: {
     origin: "http://localhost:3000",
     methods: ["GET", "POST"],
     credentials: true
   }
 });
-const subscriber = new Redis({ host: 'localhost', port: 6379 });
+const subscriber = new Redis({ 
+  host: process.env.REDIS_HOST || 'redis', 
+  port: 6379 
+});
 
 subscriber.subscribe('ping-updates', (err, count) => {
   if (err) console.error("Failed to subscribe:", err);
@@ -20,8 +23,6 @@ subscriber.on('message', (channel, message) => {
     const data = JSON.parse(message);
     console.log(data)
 
-    io.emit(`monitor-${data.monitorId}`, data); 
-    // Pro-Tip: Using monitorId in the event name lets the frontend 
-    // only listen to the specific monitor it's looking at.
+    io.emit(`monitor-${data.monitorId}`, data);
   }
 });

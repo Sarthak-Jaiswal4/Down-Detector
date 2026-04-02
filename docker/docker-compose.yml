@@ -5,6 +5,11 @@ services:
     ports:
       - "6379:6379"
     restart: always
+    healthcheck: # 👈 Vital: Tells other services Redis is actually READY
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     
   http-server:
     build: 
@@ -13,12 +18,15 @@ services:
       args:
         - DATABASE_URL=${DATABASE_URL}
         - BACKEND_URL=${BACKEND_URL}
+    ports:
+      - "3001:3001"
     environment:
       DATABASE_URL: "${DATABASE_URL}" # Pass your Neon URL here
       REDIS_HOST: "redis"
       REDIS_PORT: 6379
     depends_on:
-      - redis
+          redis:
+            condition: service_healthy
 
   worker:
     build: 
@@ -31,5 +39,42 @@ services:
       BACKEND_URL: "${BACKEND_URL}"
       NODE_ENV: production
     depends_on:
-      - http-server
-      - redis
+      redis:
+        condition: service_healthy
+      http-server:
+        condition: service_started
+
+  pinging:
+    build: 
+      context: ..
+      dockerfile: ./docker/Dockerfile.pinging.yml
+      args:
+        - DATABASE_URL=${DATABASE_URL}
+        - BACKEND_URL=${BACKEND_URL}
+    ports:
+      - "3002:3002"
+    environment:
+      DATABASE_URL: "${DATABASE_URL}" # Pass your Neon URL here
+      REDIS_HOST: "redis"
+      REDIS_PORT: 6379
+    depends_on:
+      redis:
+        condition: service_healthy
+      worker:
+        condition: service_started
+      http-server:
+        condition: service_started
+  
+  websocket:
+    build:
+      context: ..
+      dockerfile: ./docker/Dockerfile.websocket.yml
+    ports:
+      - "3003:3003"
+    environment:
+      REDIS_HOST: "redis"
+      REDIS_PORT: 6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always

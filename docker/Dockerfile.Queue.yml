@@ -13,9 +13,8 @@ COPY ./package.json ./package.json
 
 COPY packages packages
 
-RUN pnpm install
+RUN pnpm install --frozen-lockfile
 
-# Skip db:migrate in docker build since it requires a live DB connection
 RUN pnpm run db:generate
 
 FROM node:20-alpine AS run
@@ -28,7 +27,7 @@ COPY --from=build /app/pnpm-lock.yaml ./
 COPY --from=build /app/pnpm-workspace.yaml ./
 COPY --from=build /app/packages ./packages
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --prod
 
 # The Queue doesn't build to dist/, it runs directly with tsx
 CMD ["pnpm", "--filter", "@repo/queue", "run", "worker"]

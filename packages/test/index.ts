@@ -38,13 +38,58 @@ async function seedTestMonitors() {
     { url: "127.0.0.1", type: ConnectionType.PORT, port: 9999 } // Dead Local Port (Should fail)
   ];
 
+  const stressTestMonitors = [
+  { url: "https://httpbin.org/delay/5", type: "HTTP" }, // Timeout/Socket Latency
+  { url: "https://www.wikipedia.org", type: "HTTP" },   // Complex SSL Handshake
+  { url: "https://www.gov.uk", type: "HTTP" },          // Fast Response cycling
+  { url: "https://httpbin.org/bytes/50000", type: "HTTP" }, // Memory Buffer (50KB)
+  { url: "https://www.nytimes.com", type: "HTTP" },     // Heavy Headers
+  { url: "https://httpbin.org/redirect/5", type: "HTTP" },  // Redirect Logic
+  { url: "https://www.cloudflare.com", type: "HTTP" },  // Edge Security Verification
+  { url: "https://httpstat.us/503", type: "HTTP" },     // Error State handling
+  { url: "https://www.amazon.com", type: "HTTP" },      // Connection Reset Resilience
+  { url: "https://httpbin.org/stream/20", type: "HTTP" },   // Streaming/Async wait
+  { url: "https://www.apple.com", type: "HTTP" },       // Compression/Brotli decoding
+  { url: "https://httpbin.org/status/404", type: "HTTP" },  // 404 Negative Logging
+  { url: "https://www.github.com", type: "HTTP" },      // TLS 1.3 Handshake (CPU heavy)
+  { url: "https://httpbin.org/headers", type: "HTTP" }, // Reflection/JSON Parsing
+  { url: "https://www.reddit.com", type: "HTTP" }       // 403 Forbidden handling
+];
+
+const additionalMonitors = [
+  // 🌍 GEOGRAPHIC & INFRASTRUCTURE DIVERSITY
+  { url: "https://www.baidu.com", type: "HTTP", interval: 30, userid: "YOUR_USER_ID" },      // China-based routing (High Latency)
+  { url: "https://www.yandex.ru", type: "HTTP", interval: 30, userid: "YOUR_USER_ID" },     // Russia-based routing
+  { url: "https://www.mercadolibre.com.ar", type: "HTTP", interval: 30, userid: "YOUR_USER_ID" }, // Latin America routing
+
+  // 🔒 COMPLEX SECURITY & HEADERS
+  { url: "https://www.facebook.com", type: "HTTP", interval: 30, userid: "YOUR_USER_ID" },   // Extremely heavy HSTS & CSP headers
+  { url: "https://www.microsoft.com", type: "HTTP", interval: 30, userid: "YOUR_USER_ID" },  // Multi-layered redirect & cookie handling
+  { url: "https://www.digicert.com", type: "HTTP", interval: 30, userid: "YOUR_USER_ID" },   // CA site; tests strict OSCP/CRL stapling
+  
+  // ⚡ FAST RE-VALIDATION (High Frequency)
+  { url: "https://1.1.1.1", type: "HTTP", interval: 30, userid: "YOUR_USER_ID" },           // Cloudflare DNS; tests raw IP speed
+  { url: "https://www.google.com/generate_204", type: "HTTP", interval: 30, userid: "YOUR_USER_ID" }, // Smallest possible valid response
+
+  // 🧪 API & DYNAMIC BEHAVIOR
+  { url: "https://api.github.com/zen", type: "HTTP", interval: 30, userid: "YOUR_USER_ID" }, // Simple text API; tests frequent parsing
+  { url: "https://httpbin.org/anything", type: "HTTP", interval: 30, userid: "YOUR_USER_ID" }, // Mirror API; returns all request data
+  { url: "https://httpbin.org/gzip", type: "HTTP", interval: 30, userid: "YOUR_USER_ID" },     // Tests Gzip decompression CPU usage
+  
+  // 🧨 ERROR & EDGE CASES
+  { url: "https://httpbin.org/status/429", type: "HTTP", interval: 30, userid: "YOUR_USER_ID" }, // Rate Limited simulator
+  { url: "https://httpbin.org/status/500", type: "HTTP", interval: 30, userid: "YOUR_USER_ID" }, // Server Error simulator
+  { url: "https://badssl.com", type: "HTTP", interval: 30, userid: "YOUR_USER_ID" },           // Hub for testing broken SSL logic
+  { url: "https://expired.badssl.com", type: "HTTP", interval: 30, userid: "YOUR_USER_ID" }    // Forces your SSL expiry logic to trigger
+];
+
   console.log("🚀 Seeding 20 test monitors...");
 
-  const data = scenarios.map(s => ({
+  const data = additionalMonitors.map(s => ({
     ...s,
     interval: 10, // 5 second interval for fast testing
     status: 'UP',
-    userid: "d438964b-3a96-4179-86b7-72f01745156e",
+    userid: "4a73c0bf-13e7-4ea6-a2ec-3c36b961c59f",
   }));
 
   try {

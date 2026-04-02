@@ -6,6 +6,9 @@ import { Redis } from 'ioredis'
 import tls from 'tls';
 import net from 'net'
 import {DownRetry,myQueue,retry,sslQueue,connection} from './queue.js'
+import dns from 'dns';
+import Traceroute from 'nodejs-traceroute'
+import ping from 'ping';
 
 const publisher =new Redis({ 
   host: process.env.REDIS_HOST || 'localhost', 
@@ -23,16 +26,21 @@ const myWorker = new Worker('results', async (job: Job) => {
   buffer.push(job.data);
   await publisher.publish('ping-updates', JSON.stringify(payload));
 
-  if (buffer.length >= 10) { // Only hit the API once we have 10 results
+  if (buffer.length >= 10) { // Hit the API immediately during development
     const batch = [...buffer];
     buffer = []; // Clear the buffer
     try {
-      await fetch(`${process.env.BACKEND_URL}/checks/bulk`, {
+      const response = await fetch(`${process.env.BACKEND_URL}/checks/bulk`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(batch)
       });
-      console.log(`Saved check for monitor ${payload.monitorId} to db via http-server`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Bulk check API returned ${response.status}:`, errorText);
+      } else {
+        console.log(`Saved 10 checks to db via http-server`);
+      }
     } catch (e) {
       console.error('Failed to post check outcome against bulk check api', e);
     }
@@ -110,7 +118,7 @@ const my_retry_worker = new Worker('retry', async (job: Job) => {
     } else {
       throw new Error("Still Down");
     }
-  } catch (error) {
+  } catch (error:any) {
     if (job.attemptsMade >= 2) {
       console.log(`[Retry Worker] Monitor ${url} failed 3 times. Sending email alert.`);
 
@@ -120,6 +128,15 @@ const my_retry_worker = new Worker('retry', async (job: Job) => {
         });
       } catch (error) {
         console.log("Error occured in sending mail",error)
+      }
+
+      const data=await check(url)
+      try {
+        await axios.post(`${process.env.BACKEND_URL}/incident`,{
+          report: data, monitorid, error: error.message
+        })
+      } catch (error) {
+        console.log("Error Uploading the incident data to DB",error)
       }
 
       await DownRetry.add('Down-retry', { url, monitorid, userid, type, port }, {
@@ -162,7 +179,7 @@ export function getSSLExpiry(url: string): Promise<number> {
 }
 
 const sslWorker = new Worker('ssl-check', async (job) => {
-  const monitors = await prisma.monitor.findMany();
+  const monitors = await prisma.monitor.findMany({ where: { active: true } });
 
   for (const monitor of monitors) {
     try {
@@ -261,10 +278,106 @@ const DownMonitor = new Worker('Down-retry', async (job: Job) => {
       return "Recovered";
     }
 
-  } catch (error) {
-    console.log(`[Recovery Worker] ${url} is still down. Will check again in the next cycle.`,error);
+  } catch (error:any) {
+    const data=await check(url)
+    try {
+      await axios.post(`${process.env.BACKEND_URL}/incident`,{
+        report: data, monitorid, error: error.message
+      })
+    } catch (error) {
+      console.log("Error Uploading the incident data to DB",error)
+    }
+
+    console.log(`[Recovery Worker] ${url} is still down. Will check again in the next cycle.`,error.message);
   }
 }, {
   connection,
   concurrency: 5
 });
+
+const check=async(url:string)=>{
+    const report: any = { 
+    dns: null, 
+    hops: [], 
+    ssl: null,
+    ping: null,
+    failureHop:null,
+    failureLocation:null,
+    timestamp: new Date() 
+  };
+    try {
+      const hostname = new URL(url).hostname;
+
+      // DNS lookup
+      try {
+        const lookup = await dns.promises.lookup(hostname);
+        report.dns = lookup.address;
+      } catch (e) {
+        report.dns = "FAILED"; // Don't reject! Just record the failure.
+      }
+
+      // get SSL expiry
+      const [sslData, pingData] = await Promise.all([
+        getSSLExpiry(url).catch(() => ({ error: "SSL_CHECK_FAILED" })),
+        ping.promise.probe(hostname, { timeout: 5 })
+      ]);
+
+      report.ssl = sslData;
+      report.ping = {
+        isAlive: pingData.alive,
+        latency: pingData.avg,
+        ip: pingData.numeric_host
+      };
+
+      let lastKnownIp = null;
+      // Traceroute
+      await new Promise((resolve) => {
+        // @ts-ignore: nodejs-traceroute types lack construct signature for default import
+        const tracer = new Traceroute();
+        
+        const timer = setTimeout(() => {
+          report.timeout = true;
+          resolve(report);
+        }, 25000);
+
+        tracer
+          .on('hop', (hop: any) => {
+            report.hops.push(hop);
+            if (hop.ip && hop.ip !== 'Request timed out.') {
+              lastKnownIp = hop.ip; // Update the furthest point reached
+            }
+          })
+          .on('close', (code: any) => {
+            clearTimeout(timer);
+            report.tracerouteCode = code;
+            resolve(report);
+          });
+
+        tracer.trace(hostname);
+      });
+
+      report.failureHop = lastKnownIp;
+      if (report.failureHop) {
+        report.failureLocation = await getIPdetails(report.failureHop);
+      } else {
+        report.failureLocation = "Local Network / Gateway Failure";
+      }
+
+      return report;
+      
+    } catch (error) {
+      console.error("Diagnostic Engine Error:", error);
+      return { ...report, error: "Initialization failed" };
+    }
+}
+
+const getIPdetails=async(ip:string)=>{
+  try {
+    const detail=await axios.get(`http://ip-api.com/json/${ip}`)
+
+    const location=`${detail.data.city} ${detail.data.regionName} ${detail.data.country}`
+    return location
+  } catch (error) {
+    console.log("Error in getting the IP of failure hop",error)
+  }
+}
