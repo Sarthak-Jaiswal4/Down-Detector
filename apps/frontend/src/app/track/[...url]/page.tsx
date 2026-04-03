@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { useSearchParams } from 'next/navigation';
 import axios from 'axios';
 import { io } from 'socket.io-client';
+import { BACKEND_URL, WS_URL } from '@/lib/constants';
 
 interface DataPoint {
   time: string;
@@ -63,7 +64,7 @@ export default function TrackPage({ params }: { params: Promise<{ url: string[] 
   const fetchChecks = async () => {
     if (!monitorId) return;
     try {
-      const response = await axios.get(`http://localhost:3001/monitor/${monitorId}/checks?limit=60`);
+      const response = await axios.get(`${BACKEND_URL}/monitor/${monitorId}/checks?limit=60`);
       if (response.data.checks) {
         const checks = response.data.checks.reverse().map((c: any) => ({
           time: new Date(c.checkedAt).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
@@ -89,7 +90,7 @@ export default function TrackPage({ params }: { params: Promise<{ url: string[] 
     
     if (!monitorId) return;
 
-    const socket = io('http://localhost:3003');
+    const socket = io(WS_URL);
     
     socket.on(`monitor-${monitorId}`, (newCheck: any) => {
       const formattedCheck: DataPoint = {
@@ -130,7 +131,7 @@ export default function TrackPage({ params }: { params: Promise<{ url: string[] 
   const fetchLogs = async (currentPage: number) => {
     if (!monitorId) return;
     try {
-      const response = await axios.get(`http://localhost:3001/monitor/${monitorId}/checks?page=${currentPage}&limit=${LOGS_PER_PAGE}`);
+      const response = await axios.get(`${BACKEND_URL}/monitor/${monitorId}/checks?page=${currentPage}&limit=${LOGS_PER_PAGE}`);
       if (response.data.checks) {
         const checks = response.data.checks.map((c: any) => ({
           time: new Date(c.checkedAt).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),

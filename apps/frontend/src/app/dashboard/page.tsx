@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import axios from 'axios';
 import Cookies from 'js-cookie';
+import { BACKEND_URL } from '@/lib/constants';
 
 type MonitorStatus = 'up' | 'down' | 'pending' | 'paused';
 type MonitorType = 'HTTP' | 'PORT';
@@ -62,7 +63,7 @@ export default function Dashboard() {
     try {
       const token = Cookies.get('token');
       if (!token) return;
-      const response = await axios.get(`http://localhost:3001/user/monitors`, {
+      const response = await axios.get(`${BACKEND_URL}/user/monitors`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (response.data.monitors) {
@@ -139,11 +140,11 @@ export default function Dashboard() {
           : { type: 'PORT' as const, url: newUrl, port: Number(newPort), interval: newInterval, ...base };
 
       if (editingMonitorId) {
-        await axios.put(`http://localhost:3001/update/monitor/${editingMonitorId}`, payload, {
+        await axios.put(`${BACKEND_URL}/update/monitor/${editingMonitorId}`, payload, {
           headers: { Authorization: `Bearer ${token}` },
         });
       } else {
-        await axios.post('http://localhost:3001/create/monitor', payload, {
+        await axios.post(`${BACKEND_URL}/create/monitor`, payload, {
           headers: { Authorization: `Bearer ${token}` },
         });
       }
@@ -182,7 +183,7 @@ export default function Dashboard() {
     try {
       const token = Cookies.get('token');
       if (!token) return;
-      await axios.patch(`http://localhost:3001/monitor/${m.id}/pause`, { active: !m.active }, {
+      await axios.patch(`${BACKEND_URL}/monitor/${m.id}/pause`, { active: !m.active }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       getMonitor();
@@ -198,7 +199,7 @@ export default function Dashboard() {
     try {
       const token = Cookies.get('token');
       if (!token) return;
-      await axios.delete(`http://localhost:3001/monitor/${m.id}`, {
+      await axios.delete(`${BACKEND_URL}/monitor/${m.id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       getMonitor();

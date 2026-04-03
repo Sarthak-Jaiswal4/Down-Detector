@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import axios from 'axios';
 import Cookies from 'js-cookie';
+import { BACKEND_URL } from '@/lib/constants';
 
 export default function AuthPage() {
   const router = useRouter();
@@ -32,7 +33,7 @@ export default function AuthPage() {
     setError('');
 
     try {
-      const endpoint = isSignIn ? 'http://localhost:3001/signin' : 'http://localhost:3001/signup';
+      const endpoint = isSignIn ? `${BACKEND_URL}/signin` : `${BACKEND_URL}/signup`;
       const payload = isSignIn 
         ? { email: formData.email, password: formData.password }
         : { name: formData.name, email: formData.email, password: formData.password };

@@ -1,5 +1,6 @@
 import PublicPage from '@/components/PublicPage'
 import axios from 'axios'
+import { BACKEND_URL } from '@/lib/constants'
 
 async function page({ params }: { params: Promise<{ slug: string[] }> }) {
     const { slug } = await params;
@@ -9,7 +10,7 @@ async function page({ params }: { params: Promise<{ slug: string[] }> }) {
     let error = null;
 
     try {
-        const response = await axios.get(`http://localhost:3001/status/${slugString}`);
+        const response = await axios.get(`${BACKEND_URL}/status/${slugString}`);
         data = response.data;
     } catch (e: any) {
         error = e?.response?.data?.message || 'Failed to load status page';
