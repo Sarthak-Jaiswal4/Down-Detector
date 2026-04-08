@@ -1,0 +1,33 @@
+services:
+
+  - type: web
+    name: http-server
+    env: docker
+    region: singapore 
+    dockerContext: .
+    dockerfilePath: ./docker/Dockerfile.backend # Path relative to the root
+    plan: starter # Starter plan prevents "Sleeping" (512MB RAM)
+    envVars:
+      - key: DATABASE_URL
+        sync: false # You will paste your Neon URL in the Render Dashboard
+      - key: PORT
+        value: 3001
+      - key: NODE_ENV
+        value: production
+
+  # 2. THE PINGING SERVICE (The Monitor)
+  - type: worker
+    name: pinging-service
+    env: docker
+    region: singapore
+    dockerContext: .
+    dockerfilePath: ./docker/Dockerfile.pinging.yml
+    plan: starter
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: BACKEND_URL
+        # Internal URL: Render services talk to each other via their names
+        value: http://http-server:3001
+      - key: NODE_ENV
+        value: production
