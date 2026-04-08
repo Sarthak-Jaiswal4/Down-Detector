@@ -6,14 +6,14 @@ services:
     region: singapore 
     dockerContext: .
     dockerfilePath: ./docker/Dockerfile.backend # Path relative to the root
-    plan: starter # Starter plan prevents "Sleeping" (512MB RAM)
+    plan: free # free plan prevents "Sleeping" (512MB RAM)
     envVars:
       - key: DATABASE_URL
         sync: false # You will paste your Neon URL in the Render Dashboard
       - key: PORT
         value: 3001
       - key: NODE_ENV
-        value: production
+        value: production 
 
   # 2. THE PINGING SERVICE (The Monitor)
   - type: worker
@@ -22,7 +22,7 @@ services:
     region: singapore
     dockerContext: .
     dockerfilePath: ./docker/Dockerfile.pinging.yml
-    plan: starter
+    plan: free
     envVars:
       - key: DATABASE_URL
         sync: false
