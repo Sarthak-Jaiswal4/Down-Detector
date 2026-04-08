@@ -1,5 +1,8 @@
 FROM node:22-alpine AS build
 
+ARG DATABASE_URL
+ENV DATABASE_URL=$DATABASE_URL
+
 RUN npm install -g pnpm
 WORKDIR /app
 
@@ -9,10 +12,13 @@ COPY ./turbo.json ./turbo.json
 COPY ./package.json ./package.json
 
 COPY packages packages
+COPY ./apps/http-server ./apps/http-server
 
 RUN pnpm install --frozen-lockfile
 
-RUN pnpm run build --filter @repo/queue...
+RUN pnpm run db:generate
+
+RUN pnpm --filter http-server... run build
 
 FROM node:22-alpine AS run
 
@@ -23,14 +29,18 @@ COPY --from=build /app/package.json ./
 COPY --from=build /app/pnpm-lock.yaml ./
 COPY --from=build /app/pnpm-workspace.yaml ./
 
+COPY --from=build /app/packages/DB ./packages/DB
+
 COPY --from=build /app/packages/Queue/dist ./packages/Queue/dist
 COPY --from=build /app/packages/Queue/package.json ./packages/Queue/package.json
 
-COPY --from=build /app/packages/DB ./packages/DB
-
 COPY --from=build /app/packages/typescript-config ./packages/typescript-config
+COPY --from=build /app/packages/eslint-config ./packages/eslint-config
 
-# COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/apps/http-server/dist ./apps/http-server/dist
+COPY --from=build /app/apps/http-server/package.json ./apps/http-server/package.json
+
 RUN pnpm install --frozen-lockfile
+EXPOSE 3001
 
-CMD ["pnpm", "--filter", "@repo/queue", "run", "worker:prod"]
+CMD ["sh", "-c", "DATABASE_URL=$DATABASE_URL pnpm --filter @repo/db exec prisma migrate deploy --schema=./prisma/schema.prisma && pnpm --filter http-server start:prod"]

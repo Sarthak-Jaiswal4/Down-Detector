@@ -154,7 +154,7 @@ const my_retry_worker = new Worker('retry', async (job: Job) => {
   removeOnFail: { count: 100 }
 });
 
-export function getSSLExpiry(url: string): Promise<number> {
+function getSSLExpiry(url: string): Promise<number> {
   return new Promise((resolve, reject) => {
     const hostname = new URL(url).hostname;
 

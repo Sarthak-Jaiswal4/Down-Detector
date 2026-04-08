@@ -3,11 +3,11 @@ import axios from 'axios';
 import express from 'express';
 import { prisma } from '@repo/db';
 import { Redis } from 'ioredis';
-import type { Monitor } from '../../packages/DB/generated/prisma/client.js';
 import net from 'net';
 import { myQueue, retry } from '@repo/queue';
 import client from 'prom-client';
 import promBundle from 'express-prom-bundle';
+import { Check, User,Monitor } from '../../packages/DB/dist/generated/prisma/client.js';
 
 const Monitor_sub = new Redis({
   host: process.env.REDIS_HOST || 'localhost',

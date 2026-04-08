@@ -16,7 +16,7 @@ services:
         value: production 
 
   # 2. THE PINGING SERVICE (The Monitor)
-  - type: worker
+  - type: web
     name: pinging-service
     env: docker
     region: singapore

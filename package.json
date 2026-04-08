@@ -8,7 +8,8 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",
     "db:generate":"cd packages/DB && npx prisma generate && cd ../..",
-    "db:migrate":"cd packages/DB && npx prisma migrate deploy && cd ../.."
+    "db:migrate":"cd packages/DB && npx prisma migrate && cd ../..",
+    "db:deploy": "pnpm exec prisma migrate deploy --schema=./packages/DB/prisma/schema.prisma"
   },
   "devDependencies": {
     "prettier": "^3.7.4",

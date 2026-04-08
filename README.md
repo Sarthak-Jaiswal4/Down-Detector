@@ -152,7 +152,7 @@ Frontend reads `NEXT_PUBLIC_BACKEND_URL` and `NEXT_PUBLIC_WS_URL` (see `apps/fro
 
    ```sh
    pnpm run db:generate
-   pnpm run db:migrate
+   pnpm run db:deploy
    ```
 
 3. **Environment variables** — Typical values:
@@ -195,7 +195,7 @@ A multi-service stack is defined in `docker/docker-compose.yml`: **redis**, **ht
 | `pnpm lint` | Lint |
 | `pnpm check-types` | Typecheck |
 | `pnpm run db:generate` | Prisma client generate |
-| `pnpm run db:migrate` | Prisma migrate deploy |
+| `pnpm run db:deploy` | Prisma migrate deploy |
 
 ---
 

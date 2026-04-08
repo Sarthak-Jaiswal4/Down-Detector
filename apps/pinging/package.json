@@ -2,12 +2,14 @@
   "name": "pinging",
   "version": "1.0.0",
   "description": "",
-  "main": "index.ts",
+  "main": "index.js",
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "tsx watch ./index.ts",
-    "start": "tsx index.ts"
+    "start": "tsx index.ts",
+    "build": "tsc",
+    "start:prod" : "node dist/index.js"
   },
   "keywords": [],
   "author": "",
@@ -23,6 +25,7 @@
     "express-prom-bundle": "^8.0.0",
     "ioredis": "^5.10.1",
     "prom-client": "^15.1.3",
-    "tsx": "^4.21.0"
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
   }
 }

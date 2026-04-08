@@ -1,4 +1,4 @@
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 
 ARG DATABASE_URL
 ENV DATABASE_URL=$DATABASE_URL
@@ -16,13 +16,11 @@ COPY packages packages
 COPY ./apps/pinging ./apps/pinging
 
 RUN pnpm install --frozen-lockfile
-
-RUN pnpm run db:migrate
 RUN pnpm run db:generate
 
-RUN pnpm run build --filter pinging
+RUN pnpm run build --filter pinging...
 
-FROM node:20-alpine AS run
+FROM node:22-alpine AS run
 
 WORKDIR /app
 RUN npm install -g pnpm
@@ -30,10 +28,19 @@ RUN npm install -g pnpm
 COPY --from=build /app/package.json ./
 COPY --from=build /app/pnpm-lock.yaml ./
 COPY --from=build /app/pnpm-workspace.yaml ./
-COPY --from=build /app/packages ./packages
-COPY --from=build /app/apps/pinging ./apps/pinging
+
+COPY --from=build /app/packages/DB ./packages/DB
+
+COPY --from=build /app/packages/Queue/dist ./packages/Queue/dist
+COPY --from=build /app/packages/Queue/package.json ./packages/Queue/package.json
+
+COPY --from=build /app/packages/typescript-config ./packages/typescript-config
+COPY --from=build /app/packages/eslint-config ./packages/eslint-config
+
+COPY --from=build /app/apps/pinging/dist ./apps/pinging/dist
+COPY --from=build /app/apps/pinging/package.json ./apps/pinging/package.json
 
 RUN pnpm install --frozen-lockfile
 EXPOSE 3002
 
-CMD ["pnpm", "--filter", "pinging", "start"]
+CMD ["sh", "-c", "DATABASE_URL=$DATABASE_URL pnpm --filter @repo/db exec prisma migrate deploy --schema=./prisma/schema.prisma && pnpm --filter pinging start:prod"]

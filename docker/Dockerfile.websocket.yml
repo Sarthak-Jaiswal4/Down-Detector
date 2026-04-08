@@ -1,15 +1,17 @@
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 
 RUN npm install -g pnpm
 WORKDIR /app
 
 COPY pnpm-lock.yaml pnpm-workspace.yaml turbo.json package.json ./
 
+COPY packages packages
 COPY apps/websocket ./apps/websocket
 
-RUN pnpm install --filter websocket --frozen-lockfile
+RUN pnpm install --frozen-lockfile
+RUN pnpm run build --filter websocket...
 
-FROM node:20-alpine AS run
+FROM node:22-alpine AS run
 
 WORKDIR /app
 RUN npm install -g pnpm
@@ -17,10 +19,16 @@ RUN npm install -g pnpm
 COPY --from=build /app/package.json ./
 COPY --from=build /app/pnpm-lock.yaml ./
 COPY --from=build /app/pnpm-workspace.yaml ./
-COPY --from=build /app/apps/websocket ./apps/websocket
 
-RUN pnpm install --filter websocket --frozen-lockfile --prod
+COPY --from=build /app/packages/typescript-config ./packages/typescript-config
+COPY --from=build /app/packages/eslint-config ./packages/eslint-config
+
+COPY --from=build /app/apps/websocket/dist ./apps/websocket/dist
+COPY --from=build /app/apps/websocket/package.json ./apps/websocket/package.json
+
+# COPY --from=build /app/node_modules ./node_modules
+RUN pnpm install --filter websocket --frozen-lockfile
 
 EXPOSE 3003
 
-CMD ["pnpm", "--filter", "websocket", "start"]
+CMD ["pnpm", "--filter", "websocket", "run", "start:prod"]

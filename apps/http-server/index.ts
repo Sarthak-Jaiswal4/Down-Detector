@@ -26,7 +26,7 @@ const metricsMiddleware = promBundle({
 
 const Monitor_publisher = new Redis({
   host: process.env.REDIS_HOST || 'localhost',
-  port: process.env.PORT ? parseInt(process.env.PORT, 10) : 6379
+  port: process.env.REDIS_PORT  ? parseInt(process.env.REDIS_PORT , 10) : 6379
 });
 
 export interface AuthRequest extends Request {
@@ -40,6 +40,10 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
         return;
     }
     const token = authHeader.split(' ')[1];
+    if (!token) {
+        res.status(401).json({ message: 'Unauthorized' });
+        return;
+    }
     try {
         const decoded = jwt.verify(token, JWT_SECRET as string) as any;
         req.userId = decoded.userId;
@@ -761,6 +765,7 @@ app.get('/status/:slug',async (req:Request,res:Response)=>{
     }
 })
 
-app.listen(3001, () => {
-    console.log("http-server running at 3001 port")
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
+app.listen(PORT, () => {
+    console.log(`http-server running at ${PORT} port`)
 })
