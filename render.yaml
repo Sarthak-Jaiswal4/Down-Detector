@@ -9,16 +9,11 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
-      - key: REDIS_HOST
+      - key: REDIS_URL
         fromService:
           type: redis
           name: redis
-          property: host
-      - key: REDIS_PORT
-        fromService:
-          type: redis
-          name: redis
-          property: port
+          property: connectionString
       - key: Resend_API
         sync: false
       - key: NODE_ENV
@@ -36,16 +31,11 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
-      - key: REDIS_HOST
+      - key: REDIS_URL
         fromService:
           type: redis
           name: redis
-          property: host
-      - key: REDIS_PORT
-        fromService:
-          type: redis
-          name: redis
-          property: port
+          property: connectionString
       - key: BACKEND_URL
         value: http://http-server:3001
       - key: NODE_ENV
@@ -61,16 +51,11 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
-      - key: REDIS_HOST
+      - key: REDIS_URL
         fromService:
           type: redis
           name: redis
-          property: host
-      - key: REDIS_PORT
-        fromService:
-          type: redis
-          name: redis
-          property: port
+          property: connectionString
       - key: BACKEND_URL
         value: http://http-server:3001
       - key: NODE_ENV
@@ -86,16 +71,11 @@ services:
     dockerfilePath: ./docker/Dockerfile.websocket.yml
     plan: free
     envVars:
-      - key: REDIS_HOST
+      - key: REDIS_URL
         fromService:
           type: redis
           name: redis
-          property: host
-      - key: REDIS_PORT
-        fromService:
-          type: redis
-          name: redis
-          property: port
+          property: connectionString
       - key: NODE_ENV
         value: production
       - key: PORT

@@ -9,10 +9,12 @@ import client from 'prom-client';
 import promBundle from 'express-prom-bundle';
 import { Check, User,Monitor } from '../../packages/DB/dist/generated/prisma/client.js';
 
-const Monitor_sub = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: process.env.PORT ? parseInt(process.env.PORT, 10) : 6379,
-});
+const Monitor_sub = process.env.REDIS_URL
+  ? new Redis(process.env.REDIS_URL)
+  : new Redis({
+      host: process.env.REDIS_HOST || 'localhost',
+      port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT, 10) : 6379,
+    });
 
 const metricsMiddleware = promBundle({
   includeMethod: true,       // GET, POST etc

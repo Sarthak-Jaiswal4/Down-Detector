@@ -8,10 +8,12 @@ const io = new Server(3003, {
     credentials: true
   }
 });
-const subscriber = new Redis({ 
-  host: process.env.REDIS_HOST || 'redis', 
-  port: 6379 
-});
+const subscriber = process.env.REDIS_URL 
+  ? new Redis(process.env.REDIS_URL) 
+  : new Redis({ 
+      host: process.env.REDIS_HOST || 'redis', 
+      port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT, 10) : 6379 
+    });
 
 subscriber.subscribe('ping-updates', (err, count) => {
   if (err) console.error("Failed to subscribe:", err);
