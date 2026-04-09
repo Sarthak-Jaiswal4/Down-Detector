@@ -9,6 +9,7 @@ import {DownRetry,myQueue,retry,sslQueue,connection} from './queue.js'
 import dns from 'dns';
 import Traceroute from 'nodejs-traceroute'
 import ping from 'ping';
+import http from 'http';
 
 const publisher =new Redis({ 
   host: process.env.REDIS_HOST || 'localhost', 
@@ -381,3 +382,11 @@ const getIPdetails=async(ip:string)=>{
     console.log("Error in getting the IP of failure hop",error)
   }
 }
+
+const port = process.env.PORT || 8080;
+http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end('Worker is running');
+}).listen(port, () => {
+  console.log(`Dummy server listening on port ${port} to satisfy Render port binding...`);
+});
