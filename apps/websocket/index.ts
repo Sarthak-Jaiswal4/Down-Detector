@@ -3,7 +3,7 @@ import { Server } from 'socket.io';
 
 const io = new Server(3003, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: ["http://localhost:3000", "https://down-detector-teal.vercel.app"],
     methods: ["GET", "POST"],
     credentials: true
   }
