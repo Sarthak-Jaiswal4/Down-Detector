@@ -31,9 +31,6 @@ COPY --from=build /app/pnpm-workspace.yaml ./
 
 COPY --from=build /app/packages/DB ./packages/DB
 
-COPY --from=build /app/packages/Queue/dist ./packages/Queue/dist
-COPY --from=build /app/packages/Queue/package.json ./packages/Queue/package.json
-
 COPY --from=build /app/packages/typescript-config ./packages/typescript-config
 COPY --from=build /app/packages/eslint-config ./packages/eslint-config
 
