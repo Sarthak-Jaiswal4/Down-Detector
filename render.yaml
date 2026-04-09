@@ -105,3 +105,4 @@ services:
     name: redis
     region: singapore
     plan: free
+    ipAllowList: []
