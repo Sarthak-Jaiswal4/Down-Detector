@@ -628,8 +628,8 @@ app.post('/incident',async(req,res)=>{
                 pingLatency: report.ping?.latency && report.ping.latency !== "unknown" ? parseFloat(report.ping.latency) : null,
                 hops: report.hops,
                 rawError: error,
-                failureHop:(report.failureHop).toString(),
-                failureLocation:report.failureLocation
+                failureHop: report.failureHop ? String(report.failureHop) : null,
+                failureLocation: report.failureLocation
             }
         });
 
