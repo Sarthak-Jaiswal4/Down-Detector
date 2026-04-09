@@ -1,7 +1,10 @@
 import { Redis } from 'ioredis';
 import { Server } from 'socket.io';
+import { createServer } from 'http'; 
 
-const io = new Server(3003, {
+const httpServer = createServer();
+
+const io = new Server(httpServer, {
   cors: {
     origin: ["http://localhost:3000", "https://down-detector-teal.vercel.app"],
     methods: ["GET", "POST"],
@@ -27,4 +30,9 @@ subscriber.on('message', (channel, message) => {
 
     io.emit(`monitor-${data.monitorId}`, data);
   }
+});
+
+const PORT = process.env.PORT || 3003; 
+httpServer.listen(PORT, () => {
+  console.log(`WebSocket Server running on port ${PORT}`);
 });
