@@ -391,4 +391,8 @@ http.createServer((req, res) => {
   res.end('Worker is running');
 }).listen(port, () => {
   console.log(`Dummy server listening on port ${port} to satisfy Render port binding...`);
+  // Keep alive every 5 minutes
+  setInterval(() => {
+      axios.get(process.env.PUBLIC_URL || `http://localhost:${port}`).catch(() => {});
+  }, 5 * 60 * 1000);
 });

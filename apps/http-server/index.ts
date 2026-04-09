@@ -769,5 +769,9 @@ app.get('/status/:slug',async (req:Request,res:Response)=>{
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 app.listen(PORT, () => {
-    console.log(`http-server running at ${PORT} port`)
+    console.log(`http-server running at ${PORT} port`);
+    // Keep alive every 5 minutes
+    setInterval(() => {
+        fetch(process.env.PUBLIC_URL || `http://localhost:${PORT}/`).catch(() => {});
+    }, 5 * 60 * 1000);
 })

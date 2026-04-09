@@ -249,4 +249,8 @@ app.get('/', (req, res) => {
 
 app.listen(3002, () => {
   console.log('pinging app running at 3002 port');
+  // Keep alive every 5 minutes
+  setInterval(() => {
+      axios.get(process.env.PUBLIC_URL || `http://localhost:3002/`).catch(() => {});
+  }, 5 * 60 * 1000);
 });

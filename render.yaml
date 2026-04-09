@@ -20,6 +20,8 @@ services:
         value: production
       - key: PORT
         value: 3001
+      - key: PUBLIC_URL
+        value: https://http-server-6i9s.onrender.com
 
   - type: web
     name: worker
@@ -40,6 +42,8 @@ services:
         value: http://http-server:3001
       - key: NODE_ENV
         value: production
+      - key: PUBLIC_URL
+        value: https://worker-s4bs.onrender.com
 
   - type: web
     name: pinging
@@ -62,6 +66,8 @@ services:
         value: production
       - key: PORT
         value: 3002
+      - key: PUBLIC_URL
+        value: https://pinging-32id.onrender.com
 
   - type: web
     name: websocket
@@ -80,6 +86,8 @@ services:
         value: production
       - key: PORT
         value: 3003
+      - key: PUBLIC_URL
+        value: https://websocket-axsc.onrender.com
 
   - type: redis
     name: redis

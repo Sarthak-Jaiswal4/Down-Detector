@@ -35,4 +35,8 @@ subscriber.on('message', (channel, message) => {
 const PORT = process.env.PORT || 3003; 
 httpServer.listen(PORT, () => {
   console.log(`WebSocket Server running on port ${PORT}`);
+  // Keep alive every 5 minutes
+  setInterval(() => {
+      fetch(process.env.PUBLIC_URL || `http://localhost:${PORT}`).catch(() => {});
+  }, 5 * 60 * 1000);
 });
