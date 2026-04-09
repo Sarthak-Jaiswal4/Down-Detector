@@ -28,6 +28,7 @@ interface Monitor {
   title?: string;
   maintenanceStart?: string;
   maintenanceEnd?: string;
+  slug?: string;
 }
 
 const INTERVAL_OPTIONS = [
