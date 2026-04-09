@@ -30,7 +30,6 @@ COPY --from=build /app/packages/DB ./packages/DB
 
 COPY --from=build /app/packages/typescript-config ./packages/typescript-config
 
-# COPY --from=build /app/node_modules ./node_modules
 RUN pnpm install --frozen-lockfile
 
 CMD ["pnpm", "--filter", "@repo/queue", "run", "worker:prod"]

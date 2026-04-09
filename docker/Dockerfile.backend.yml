@@ -43,4 +43,4 @@ COPY --from=build /app/apps/http-server/package.json ./apps/http-server/package.
 RUN pnpm install --frozen-lockfile
 EXPOSE 3001
 
-CMD ["sh", "-c", "DATABASE_URL=$DATABASE_URL pnpm --filter @repo/db exec prisma migrate deploy --schema=./prisma/schema.prisma && pnpm --filter http-server start:prod"]
+CMD ["sh", "-c", "pnpm --filter @repo/db exec prisma migrate deploy --schema=./prisma/schema.prisma && pnpm --filter http-server start:prod"]
