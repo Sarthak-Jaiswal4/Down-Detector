@@ -11,10 +11,12 @@ import Traceroute from 'nodejs-traceroute'
 import ping from 'ping';
 import http from 'http';
 
-const publisher =new Redis({ 
-  host: process.env.REDIS_HOST || 'localhost', 
-  port: Number(process.env.REDIS_PORT) || 6379 
-});
+const publisher = process.env.REDIS_URL
+  ? new Redis(process.env.REDIS_URL)
+  : new Redis({ 
+      host: process.env.REDIS_HOST || 'localhost', 
+      port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT, 10) : 6379 
+    });
 
 sslQueue.add('daily-ssl-check', {}, {
   repeat: { pattern: '0 0 * * *' }
