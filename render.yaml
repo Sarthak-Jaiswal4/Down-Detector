@@ -39,7 +39,7 @@ services:
           name: redis
           property: connectionString
       - key: BACKEND_URL
-        value: http://http-server:3001
+        value: https://http-server-6i9s.onrender.com
       - key: NODE_ENV
         value: production
       - key: PUBLIC_URL
@@ -61,7 +61,7 @@ services:
           name: redis
           property: connectionString
       - key: BACKEND_URL
-        value: http://http-server:3001
+        value: https://http-server-6i9s.onrender.com
       - key: NODE_ENV
         value: production
       - key: PORT
