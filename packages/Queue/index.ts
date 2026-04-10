@@ -50,7 +50,9 @@ const myWorker = new Worker('results', async (job: Job) => {
   }
 }, {
   connection,
-  concurrency: 10
+  concurrency: 10,
+  removeOnComplete: { count: 0 },
+  removeOnFail: { count: 100 }
 });
 
 const my_retry_worker = new Worker('retry', async (job: Job) => {
